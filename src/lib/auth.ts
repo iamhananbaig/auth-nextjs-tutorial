@@ -1,10 +1,17 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import {v4 as uuid } from "uuid"
+import { v4 as uuid } from "uuid";
 import db from "./db/db";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { encode as defaultEncode } from "next-auth/jwt";
 import { schema } from "./schema";
+import * as argon2 from "argon2";
+
+declare module "next-auth" {
+  interface Session {
+    permissions: string;
+  }
+}
 
 const adapter = PrismaAdapter(db);
 
@@ -22,11 +29,18 @@ export const { auth, handlers, signIn } = NextAuth({
         const user = await db.user.findFirst({
           where: {
             email: validatedCredentials.email,
-            password: validatedCredentials.password,
           },
         });
         if (!user) {
-          throw new Error("Invalid Password");
+          throw new Error("Invalid User Not Found");
+        }
+        if (
+          !(await argon2.verify(
+            user.password as string,
+            validatedCredentials.password
+          ))
+        ) {
+          throw new Error("Wrong Password");
         }
         return user;
       },
@@ -38,6 +52,12 @@ export const { auth, handlers, signIn } = NextAuth({
         token.credentials = true;
       }
       return token;
+    },
+    async session({ session }) {
+      const permission: string = "1234";
+      session.permissions = permission;
+      console.log(session);
+      return session;
     },
   },
   jwt: {
